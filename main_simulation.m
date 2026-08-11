@@ -8,21 +8,9 @@ fprintf('======================================================\n');
 fprintf('   SwarmAuth Phase 2: Tactical Authentication Test    \n');
 fprintf('======================================================\n\n');
 
-%% Step 1: 10-Node Swarm Initialization (Registry)
+%% Step 1: 10-Node Swarm Initialization
 fprintf('[SYSTEM] Initializing 9-Wingman Swarm Registry...\n');
-registry = containers.Map();
-wingmen = cell(9,1);
-
-for i = 1:9
-    id = sprintf('WINGMAN_%02d', i);
-    registry(id) = sprintf('%02x', randi([0, 255], 1, 32));
-end
-C2_Leader = LeaderDrone(registry);
-
-for i = 1:9
-    id = sprintf('WINGMAN_%02d', i);
-    wingmen{i} = WingmanDrone(id, registry(id));
-end
+[C2_Leader, wingmen, registry] = swarm_init(9);
 fprintf('[SYSTEM] Registry complete. All 9 Wingmen generated.\n\n');
 
 %% Scenario 1: Normal-Operation Authentication (All 9 Members)
