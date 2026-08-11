@@ -58,7 +58,11 @@ fprintf('\n');
 %% Scenario 3: Unauthorized Injection & Impersonation
 fprintf('--- SCENARIO 3: Attacker Defenses ---\n');
 [~, ~, ~, stat3] = C2_Leader.issueChallenge('ENEMY_DRONE', 'fake_nonce');
-fprintf('[SUCCESS] Injection Blocked.\n');
+
+% FIX: Conditionally check stat3 before claiming success
+if strcmp(stat3, 'REJECT_UNKNOWN_ID')
+    fprintf('[SUCCESS] Injection Blocked.\n');
+end
 
 fake_key = sprintf('%02x', randi([0, 255], 1, 32));
 Attacker = WingmanDrone('WINGMAN_05', fake_key);
@@ -69,7 +73,6 @@ try
 catch
     fprintf('[SUCCESS] Attacker Impersonation caught during Mutual Authentication!\n\n');
 end
-
 %% Scenario 4: Real Replay Attack Simulation
 fprintf('--- SCENARIO 4: True Replay Attack simulation ---\n');
 wm = wingmen{8};
