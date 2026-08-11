@@ -89,34 +89,58 @@ fprintf('Energy per Authentication: %.4f milliJoules (mJ)\n', energy_mj);
 fprintf('Conclusion: The HMAC algorithm consumes a fraction of a milliJoule.\n');
 fprintf('This mathematically proves maximum battery savings compared to ECC/RSA.\n\n');
 
-%% Step 5: Visual Topology Graph
-fprintf('[SYSTEM] Generating Visual Swarm Graph...\n');
+%% Step 5: Visual Topology Graph (10-Node Swarm)
+fprintf('[SYSTEM] Generating Visual Swarm Graph (1 Leader, 9 Wingmen, 1 Attacker)...\n');
 figure('Name', 'SwarmAuth Network Topology', 'NumberTitle', 'off');
 
 % Create Graph
 G = graph();
-nodes = {'Cluster_Head', 'WINGMAN_01', 'WINGMAN_02', 'ENEMY_DRONE'};
+
+% Define all 11 nodes (1 Leader, 9 Wingmen, 1 Enemy)
+nodes = {'Cluster_Head', 'WINGMAN_01', 'WINGMAN_02', 'WINGMAN_03', ...
+         'WINGMAN_04', 'WINGMAN_05', 'WINGMAN_06', 'WINGMAN_07', ...
+         'WINGMAN_08', 'WINGMAN_09', 'ENEMY_DRONE'};
 G = addnode(G, nodes);
 
-% CH to Wingmen edges
-G = addedge(G, 'Cluster_Head', 'WINGMAN_01');
-G = addedge(G, 'Cluster_Head', 'WINGMAN_02');
-% UAV-to-UAV edge
+% 1. Create the Star Topology (Connect Cluster Head to all 9 Wingmen)
+for i = 1:9
+    wingman_name = sprintf('WINGMAN_%02d', i);
+    G = addedge(G, 'Cluster_Head', wingman_name);
+end
+
+% 2. Add UAV-to-UAV (P2P) edges to demonstrate direct Group Communication
 G = addedge(G, 'WINGMAN_01', 'WINGMAN_02');
+G = addedge(G, 'WINGMAN_04', 'WINGMAN_05');
+G = addedge(G, 'WINGMAN_07', 'WINGMAN_08');
+G = addedge(G, 'WINGMAN_08', 'WINGMAN_09');
 
-% Plot the graph
-p = plot(G, 'Layout', 'force', 'MarkerSize', 12, 'LineWidth', 2);
-title('SwarmAuth: Secure Topology');
+% Plot the graph using a force-directed layout for a beautiful swarm shape
+p = plot(G, 'Layout', 'force', 'MarkerSize', 10, 'LineWidth', 1.5);
+title('SwarmAuth: 10-Node Secure Topology + Isolated Attacker');
 
-% Color Coding: CH = Blue, Authenticated = Green, Attacker = Red
-highlight(p, 'Cluster_Head', 'NodeColor', '#0072BD'); 
-highlight(p, {'WINGMAN_01', 'WINGMAN_02'}, 'NodeColor', '#77AC30'); 
+% --- COLOR CODING & STYLING ---
+
+% Make the Cluster Head large and Blue
+highlight(p, 'Cluster_Head', 'NodeColor', '#0072BD', 'MarkerSize', 16); 
+
+% Make all authenticated Wingmen Green
+wingmen_nodes = {'WINGMAN_01', 'WINGMAN_02', 'WINGMAN_03', 'WINGMAN_04', ...
+                 'WINGMAN_05', 'WINGMAN_06', 'WINGMAN_07', 'WINGMAN_08', 'WINGMAN_09'};
+highlight(p, wingmen_nodes, 'NodeColor', '#77AC30'); 
+
+% Make the Attacker Red
 highlight(p, 'ENEMY_DRONE', 'NodeColor', '#A2142F'); 
 
-% Highlight Edge Types
-highlight(p, 'Cluster_Head', 'WINGMAN_01', 'EdgeColor', '#0072BD');
-highlight(p, 'Cluster_Head', 'WINGMAN_02', 'EdgeColor', '#0072BD');
+% Color the edges: Solid Blue for CH links, Dashed Green for P2P links
+for i = 1:9
+    wingman_name = sprintf('WINGMAN_%02d', i);
+    highlight(p, 'Cluster_Head', wingman_name, 'EdgeColor', '#0072BD');
+end
+
 highlight(p, 'WINGMAN_01', 'WINGMAN_02', 'EdgeColor', '#77AC30', 'LineStyle', '--');
+highlight(p, 'WINGMAN_04', 'WINGMAN_05', 'EdgeColor', '#77AC30', 'LineStyle', '--');
+highlight(p, 'WINGMAN_07', 'WINGMAN_08', 'EdgeColor', '#77AC30', 'LineStyle', '--');
+highlight(p, 'WINGMAN_08', 'WINGMAN_09', 'EdgeColor', '#77AC30', 'LineStyle', '--');
 
 fprintf('======================================================\n');
 fprintf('               TESTBENCH COMPLETE                     \n');
