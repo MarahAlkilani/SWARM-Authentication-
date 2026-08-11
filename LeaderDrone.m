@@ -1,9 +1,10 @@
 classdef LeaderDrone < handle
     properties
-        Registry            
-        ActiveChallenges    
-        SessionKeys         
-        MaxTimeDelta = 3    
+        Registry
+        ActiveChallenges
+        SessionKeys
+        MaxTimeDelta = 3
+        GroupKey % True 256-bit Swarm Group Key
     end
     
     methods
@@ -11,56 +12,56 @@ classdef LeaderDrone < handle
             obj.Registry = registry;
             obj.ActiveChallenges = containers.Map();
             obj.SessionKeys = containers.Map();
+            obj.GroupKey = sprintf('%02x', randi([0, 255], 1, 32)); % 256-bit Hex
         end
         
-        function [nonce, timestamp, status] = issueChallenge(obj, drone_id)
+        function [nonce_L, ts, leader_hmac, status] = issueChallenge(obj, drone_id, nonce_W)
             if ~obj.Registry.isKey(drone_id)
-                nonce = ''; timestamp = 0;
-                status = 'REJECT_UNKNOWN_ID';
-                fprintf('[LEADER] REJECT: Unknown drone %s attempted to join!\n', drone_id);
+                nonce_L = ''; ts = 0; leader_hmac = ''; status = 'REJECT_UNKNOWN_ID';
                 return;
             end
             
-            nonce = num2hex(rand(1, 'single')); 
-            % FIXED: Lock to UTC to prevent timezone drift triggering a Replay Attack
-            timestamp = posixtime(datetime('now', 'TimeZone', 'UTC'));
+            % Generate True 256-bit Nonce and UTC Timestamp
+            nonce_L = sprintf('%02x', randi([0, 255], 1, 32));
+            ts = posixtime(datetime('now', 'TimeZone', 'UTC'));
             
-            obj.ActiveChallenges(drone_id) = struct('nonce', nonce, 'timestamp', timestamp);
+            % MUTUAL AUTH: Leader calculates HMAC to prove its identity to the Wingman
+            secret_key = obj.Registry(drone_id);
+            leader_hmac = compute_hmac(secret_key, [nonce_W, nonce_L]);
+            
+            obj.ActiveChallenges(drone_id) = struct('nonce_L', nonce_L, 'ts', ts);
             status = 'CHALLENGE_ISSUED';
-            fprintf('[LEADER] Challenge issued to %s (Nonce: %s)\n', drone_id, nonce);
         end
         
-        function [session_key, auth_status] = verifyResponse(obj, drone_id, nonce, timestamp, received_hmac)
-            session_key = '';
-            
+        function [enc_payload, auth_status] = verifyResponse(obj, drone_id, nonce_L, ts, hmac_W)
+            enc_payload = '';
             if ~obj.ActiveChallenges.isKey(drone_id)
-                auth_status = 'REJECT_NO_ACTIVE_CHALLENGE';
-                return;
+                auth_status = 'REJECT_NO_ACTIVE_CHALLENGE'; return;
             end
             
             challenge = obj.ActiveChallenges(drone_id);
-            
-            % FIXED: Compare against current UTC time
             current_time = posixtime(datetime('now', 'TimeZone', 'UTC'));
-            if ~strcmp(challenge.nonce, nonce) || abs(current_time - timestamp) > obj.MaxTimeDelta
-                auth_status = 'REJECT_REPLAY_ATTACK';
-                fprintf('[LEADER] REJECT: Replay attack detected for %s!\n', drone_id);
-                return;
+            
+            % REPLAY CHECK
+            if ~strcmp(challenge.nonce_L, nonce_L) || abs(current_time - ts) > obj.MaxTimeDelta
+                auth_status = 'REJECT_REPLAY_ATTACK'; return;
             end
             
             secret_key = obj.Registry(drone_id);
-            expected_hmac = compute_hmac(secret_key, [nonce, num2str(timestamp)]);
+            expected_hmac = compute_hmac(secret_key, [nonce_L, num2str(ts)]);
             
-            if strcmp(expected_hmac, received_hmac)
+            if strcmp(expected_hmac, hmac_W)
                 auth_status = 'ACCEPT';
-                session_key = num2hex(rand(1, 'single')); 
-                obj.SessionKeys(drone_id) = session_key;
-                fprintf('[LEADER] ACCEPT: Identity verified for %s. Session key generated.\n', drone_id);
+                
+                % SECURE KEY EXCHANGE: Encrypt Session & Group keys before sending
+                sess_key = sprintf('%02x', randi([0, 255], 1, 32));
+                obj.SessionKeys(drone_id) = sess_key;
+                
+                payload = [sess_key, ':', obj.GroupKey];
+                enc_payload = aes_encrypt(secret_key, payload);
             else
                 auth_status = 'REJECT_INVALID_HMAC';
-                fprintf('[LEADER] REJECT: Invalid HMAC from %s. Impersonation detected!\n', drone_id);
             end
-            
             remove(obj.ActiveChallenges, drone_id);
         end
     end
