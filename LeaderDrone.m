@@ -42,8 +42,8 @@ classdef LeaderDrone < handle
             challenge = obj.ActiveChallenges(drone_id);
             current_time = posixtime(datetime('now', 'TimeZone', 'UTC'));
             
-            % REPLAY CHECK
-            if ~strcmp(challenge.nonce_L, nonce_L) || abs(current_time - ts) > obj.MaxTimeDelta
+            % REPLAY CHECK: Must exactly match issued timestamp AND be within TTL
+            if ~strcmp(challenge.nonce_L, nonce_L) || (ts ~= challenge.ts) || abs(current_time - ts) > obj.MaxTimeDelta
                 auth_status = 'REJECT_REPLAY_ATTACK'; return;
             end
             
