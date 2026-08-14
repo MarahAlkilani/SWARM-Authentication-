@@ -111,13 +111,13 @@ figure('Name', 'Modality A: UAV-to-CH (Auth Phase)', 'Position', [150, 150, 500,
 % Create bidirectional edges between the CH (Node 1) and all Wingmen (Nodes 2-10)
 s_CH = repmat(1, 1, 9); 
 t_W = 2:10;            
-s_auth = [s_CH, t_W]; % CH to Wingmen AND Wingmen to CH
+s_auth = [s_CH, t_W]; 
 t_auth = [t_W, s_CH];
 
-G_A = digraph(s_auth, t_auth);
-G_A.Nodes.Name = nodeNames';
+% FIX: Map numeric indices directly to string names during graph creation
+G_A = digraph(nodeNames(s_auth), nodeNames(t_auth));
 
-pA = plot(G_A, 'Layout', 'star', 'MarkerSize', 12, 'NodeColor', '#77AC30', 'EdgeColor', '#0072BD');
+pA = plot(G_A, 'Layout', 'force', 'MarkerSize', 12, 'NodeColor', '#77AC30', 'EdgeColor', '#0072BD');
 highlight(pA, 'Cluster_Head', 'NodeColor', '#0072BD', 'MarkerSize', 18);
 title('Modality A: Centralized Authentication (UAV-to-CH)');
 subtitle('Bidirectional Handshake with Cluster Head');
@@ -131,9 +131,9 @@ figure('Name', 'Modality B: UAV-to-UAV (P2P Telemetry)', 'Position', [200, 200, 
 s_P2P = [2 3 4 5 6 7 8 9 10 2 5 8];
 t_P2P = [3 4 5 6 7 8 9 10 2 6 9 3]; 
 
-G_B = digraph(s_P2P, t_P2P);
+% FIX: Map numeric indices to string names during graph creation
+G_B = digraph(nodeNames(s_P2P), nodeNames(t_P2P));
 G_B = addnode(G_B, 'Cluster_Head'); % Add CH but give it NO edges
-G_B.Nodes.Name = nodeNames';
 
 pB = plot(G_B, 'Layout', 'circle', 'MarkerSize', 12, 'NodeColor', '#77AC30', 'EdgeColor', '#D95319', 'LineWidth', 1.5);
 % Gray out the Cluster Head to prove it is bypassed during P2P
