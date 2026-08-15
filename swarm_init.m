@@ -5,7 +5,7 @@ function [C2_Leader, wingmen, registry] = swarm_init(num_wingmen)
     
     for i = 1:num_wingmen
         id = sprintf('WINGMAN_%02d', i);
-        registry(id) = sprintf('%02x', randi([0, 255], 1, 32));
+        registry(id) = secure_random_hex(32);
     end
     
     C2_Leader = LeaderDrone(registry);
