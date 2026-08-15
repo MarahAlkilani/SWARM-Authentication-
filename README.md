@@ -4,9 +4,6 @@
 ![Security](https://img.shields.io/badge/Security-AES--GCM%20%7C%20HMAC--SHA256-success.svg)
 ![Course](https://img.shields.io/badge/Course-Authentication%20and%20Security%20Models-orange.svg)
 
-**University of Jordan | King Abdullah II School of Information Technology (KASIT)**  
-**Semester:** Spring 2025-2026  
-**Instructor:** Dr. Oraib Abu Alghanam  
 
 ## 📌 Project Overview
 Modern drone swarms rely on continuous wireless communication, making them highly vulnerable to identity-based cyber threats. **SwarmAuth** is a lightweight, secure authentication framework designed specifically for resource-constrained Unmanned Aerial Vehicles (UAVs). 
