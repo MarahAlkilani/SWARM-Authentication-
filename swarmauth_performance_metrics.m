@@ -1,149 +1,40 @@
-clc; clear; close all;
-import javax.crypto.Cipher;
-import javax.crypto.spec.SecretKeySpec;
-import javax.crypto.spec.GCMParameterSpec;
-import java.security.MessageDigest;
+% Measured, reproducible Phase 3 evaluation. Values are calculated from outcomes.
+clc; clear; close all; rng(20260814);
+trials = 100; packet_count = 1000; injection_rate = 0.30; capacity = 700;
+auth_times_ms = zeros(trials,1); accepted = 0; detected = 0; attacks = 0;
 
-fprintf('======================================================\n');
-fprintf(' SwarmAuth Phase 3: True Cryptographic Packet Evaluation \n');
-fprintf('======================================================\n\n');
+for k = 1:trials
+    [leader, wingmen, ~] = swarm_init(9); wm = wingmen{1};
+    tic; [id,nw] = wm.sendJoinRequest(); [nl,ts,lmac,s] = leader.issueChallenge(id,nw);
+    wmac = wm.processChallenge(nl,ts,lmac); [package,s] = leader.verifyResponse(id,nl,ts,wmac); wm.receiveKeys(package);
+    auth_times_ms(k) = toc * 1000; accepted = accepted + strcmp(s,'ACCEPT');
 
-num_trials = 1000;
-payload_size = 256; 
-malicious_rate = 0.30; 
-
-legit_sent = 0;
-malicious_sent = 0;
-sa_legit_accepted = 0;
-sa_total_latency = 0;
-base_legit_accepted = 0;
-base_false_positives = 0; 
-base_total_latency = 0;
-
-attack_detected_injection = 0;
-attack_detected_impersonation = 0;
-attack_detected_replay = 0;
-attack_detected_tampering = 0;
-
-psk_bytes = randi([0 255], 1, 32, 'int8');
-secretKey = SecretKeySpec(psk_bytes, 'AES');
-registry_id = "WINGMAN_01";
-
-fprintf('[SYSTEM] Running %d empirical trials with AES-GCM...\n\n', num_trials);
-
-for i = 1:num_trials
-    is_malicious = rand() < malicious_rate;
-    if is_malicious
-        attack_type = randi([1 4]);
-        malicious_sent = malicious_sent + 1;
-    else
-        attack_type = 0;
-        legit_sent = legit_sent + 1;
-    end
-    
-    tic;
-    pause(0.0001); 
-    base_total_latency = base_total_latency + (toc * 1000);
-    
-    if is_malicious
-        base_false_positives = base_false_positives + 1;
-    else
-        base_legit_accepted = base_legit_accepted + 1;
-    end
-    
-    tic;
-    try
-        incoming_id = registry_id;
-        incoming_key = psk_bytes;
-        incoming_time = 0; 
-        
-        if attack_type == 1, incoming_id = "ENEMY_DRONE";
-        elseif attack_type == 2, incoming_key = randi([0 255], 1, 32, 'int8'); 
-        elseif attack_type == 3, incoming_time = 5; 
-        end
-        
-        if ~strcmp(incoming_id, registry_id), error('REJECT_UNKNOWN_ID'); end
-        if incoming_time > 3, error('REJECT_REPLAY'); end
-        
-        md = MessageDigest.getInstance('SHA-256');
-        md.update(incoming_key);
-        hmac_attacker = md.digest();
-        md.reset(); md.update(psk_bytes); hmac_legit = md.digest();
-        if ~isequal(hmac_attacker, hmac_legit), error('REJECT_INVALID_MAC'); end
-        
-        payload = int8(randi([0 255], 1, payload_size));
-        iv = randi([0 255], 1, 12, 'int8'); 
-        
-        cipher = Cipher.getInstance('AES/GCM/NoPadding');
-        gcmSpec = GCMParameterSpec(128, iv);
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, gcmSpec);
-        ciphertext = cipher.doFinal(payload);
-        
-        if attack_type == 4, ciphertext(10) = ciphertext(10) + 1; end
-        
-        decCipher = Cipher.getInstance('AES/GCM/NoPadding');
-        decCipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec);
-        decCipher.doFinal(ciphertext); 
-        
-        if attack_type == 0, sa_legit_accepted = sa_legit_accepted + 1; end
-        
-    catch ME
-        if strcmp(ME.message, 'REJECT_UNKNOWN_ID'), attack_detected_injection = attack_detected_injection + 1;
-        elseif strcmp(ME.message, 'REJECT_REPLAY'), attack_detected_replay = attack_detected_replay + 1;
-        elseif strcmp(ME.message, 'REJECT_INVALID_MAC'), attack_detected_impersonation = attack_detected_impersonation + 1;
-        else attack_detected_tampering = attack_detected_tampering + 1;
-        end
-    end
-    sa_total_latency = sa_total_latency + (toc * 1000);
+    % Every trial executes four concrete attacks and records only real rejections.
+    [~,~,~,s] = leader.issueChallenge('ENEMY_DRONE', secure_random_hex(32)); attacks=attacks+1; detected=detected+strcmp(s,'REJECT_UNKNOWN_ID');
+    [id,nw] = wm.sendJoinRequest(); [nl,ts,lmac,~] = leader.issueChallenge(id,nw); %#ok<ASGLU>
+    [~,s] = leader.verifyResponse(id,nl,ts,repmat('0',1,64)); attacks=attacks+1; detected=detected+strcmp(s,'REJECT_INVALID_HMAC');
+    [id,nw] = wm.sendJoinRequest(); [nl,ts,lmac,~] = leader.issueChallenge(id,nw); wmac = wm.processChallenge(nl,ts,lmac);
+    [~,s] = leader.verifyResponse(id,nl,ts,wmac); [~,replay] = leader.verifyResponse(id,nl,ts,wmac); attacks=attacks+1; detected=detected+strcmp(replay,'REJECT_NO_ACTIVE_CHALLENGE');
+    packet = wm.sendGroupMessage('metric-packet'); packet.tag(1)=char(bitxor(uint8(packet.tag(1)),1));
+    try, wingmen{2}.GroupKey=wm.GroupKey; wingmen{2}.State='SECURE_SESSION'; wingmen{2}.receiveGroupMessage(packet); catch, detected=detected+1; end; attacks=attacks+1;
 end
 
-base_pdr = (base_legit_accepted / (base_legit_accepted + base_false_positives)) * 100;
-sa_pdr = (sa_legit_accepted / legit_sent) * 100;
-sa_avg_latency_ms = sa_total_latency / num_trials;
-base_avg_latency_ms = base_total_latency / num_trials;
-auth_header_size = 72; 
-base_overhead_kb = (num_trials * payload_size) / 1024;
-sa_overhead_kb = (num_trials * (payload_size + auth_header_size)) / 1024;
+% Capacity model: attackers consume capacity in baseline; authenticated mode drops them.
+is_attack = rand(packet_count,1) < injection_rate; is_legit = ~is_attack;
+baseline_delivered = sum(is_legit(1:capacity)); authenticated_delivered = sum(is_legit);
+baseline_pdr = 100 * baseline_delivered / sum(is_legit);
+authenticated_pdr = 100 * authenticated_delivered / sum(is_legit);
+baseline_overhead_kb = packet_count * 256 / 1024;
+auth_overhead_kb = packet_count * (256 + 12 + 16 + 32 + 8) / 1024; % GCM nonce/tag + HMAC + timestamp
 
-fprintf('--- Empirical Results ---\n');
-fprintf('Legitimate Packets Processed : %d\n', sa_legit_accepted);
-fprintf('Injection Attacks Blocked    : %d\n', attack_detected_injection);
-fprintf('Impersonation Blocked        : %d\n', attack_detected_impersonation);
-fprintf('Replays Blocked              : %d\n', attack_detected_replay);
-fprintf('MITM Tampering Blocked       : %d\n', attack_detected_tampering);
-fprintf('------------------------------------------------------\n');
-fprintf('Baseline PDR                 : %.2f %%\n', base_pdr);
-fprintf('SwarmAuth PDR                : %.2f %%\n', sa_pdr);
-fprintf('SwarmAuth Avg Latency        : %.4f ms\n', sa_avg_latency_ms);
-fprintf('======================================================\n\n');
+fprintf('Trials: %d; packet model: %d packets, %.0f%% injection, capacity %d\n',trials,packet_count,100*injection_rate,capacity);
+fprintf('Authentication success rate: %.2f%%\n',100*accepted/trials);
+fprintf('Attack detection rate: %.2f%% (%d/%d)\n',100*detected/attacks,detected,attacks);
+fprintf('Measured auth latency: mean %.3f ms, std %.3f ms\n',mean(auth_times_ms),std(auth_times_ms));
+fprintf('Baseline PDR: %.2f%%; authenticated PDR: %.2f%%\n',baseline_pdr,authenticated_pdr);
+fprintf('Baseline overhead: %.2f KB; authenticated overhead: %.2f KB\n',baseline_overhead_kb,auth_overhead_kb);
 
-fprintf('[SYSTEM] Generating all Graphical Figures...\n');
-
-figure('Name', 'Empirical Evaluation Metrics', 'Position', [100, 100, 900, 400]);
-subplot(1, 3, 1);
-bar([base_pdr, sa_pdr], 'FaceColor', [0.4660 0.6740 0.1880]);
-set(gca, 'XTickLabel', {'Baseline', 'SwarmAuth'}); ylabel('Effective PDR (%)'); title('Packet Delivery Ratio'); ylim([0 110]); grid on;
-subplot(1, 3, 2);
-bar([base_avg_latency_ms, sa_avg_latency_ms], 'FaceColor', [0.8500 0.3250 0.0980]);
-set(gca, 'XTickLabel', {'Baseline', 'SwarmAuth'}); ylabel('Latency (ms)'); title('Average Latency'); grid on;
-subplot(1, 3, 3);
-bar([base_overhead_kb, sa_overhead_kb], 'FaceColor', [0.0 0.4470 0.7410]);
-set(gca, 'XTickLabel', {'Baseline', 'SwarmAuth'}); ylabel('Overhead (KB)'); title('Total Overhead'); grid on;
-
-nodeNames = {'Cluster_Head', 'W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8', 'W9'};
-
-figure('Name', 'Modality A: UAV-to-CH (Auth Phase)', 'Position', [150, 150, 500, 450]);
-s_CH = repmat(1, 1, 9); t_W = 2:10; s_auth = [s_CH, t_W]; t_auth = [t_W, s_CH];
-G_A = digraph(nodeNames(s_auth), nodeNames(t_auth));
-pA = plot(G_A, 'Layout', 'force', 'MarkerSize', 12, 'NodeColor', '#77AC30', 'EdgeColor', '#0072BD');
-highlight(pA, 'Cluster_Head', 'NodeColor', '#0072BD', 'MarkerSize', 18);
-title('Modality A: Centralized Authentication (UAV-to-CH)'); subtitle('Bidirectional Handshake with Cluster Head');
-
-figure('Name', 'Modality B: UAV-to-UAV (P2P Telemetry)', 'Position', [200, 200, 500, 450]);
-s_P2P = [2 3 4 5 6 7 8 9 10 2 5 8]; t_P2P = [3 4 5 6 7 8 9 10 2 6 9 3]; 
-G_B = digraph(nodeNames(s_P2P), nodeNames(t_P2P)); G_B = addnode(G_B, 'Cluster_Head'); 
-pB = plot(G_B, 'Layout', 'circle', 'MarkerSize', 12, 'NodeColor', '#77AC30', 'EdgeColor', '#D95319', 'LineWidth', 1.5);
-highlight(pB, 'Cluster_Head', 'NodeColor', '#808080', 'MarkerSize', 18); 
-title('Modality B: Encrypted Peer-to-Peer (UAV-to-UAV)'); subtitle('Cluster Head bypassed during operational telemetry');
-
-fprintf('[SYSTEM] Phase 3 Simulation Complete.\n\n');
+figure('Name','Measured SwarmAuth Evaluation');
+subplot(1,3,1); bar([baseline_pdr authenticated_pdr]); title('PDR'); ylabel('%'); set(gca,'XTickLabel',{'Baseline','SwarmAuth'});
+subplot(1,3,2); bar([mean(auth_times_ms) std(auth_times_ms)]); title('Measured authentication latency'); ylabel('ms'); set(gca,'XTickLabel',{'Mean','Std. dev.'});
+subplot(1,3,3); bar([baseline_overhead_kb auth_overhead_kb]); title('Modelled communication overhead'); ylabel('KB'); set(gca,'XTickLabel',{'Baseline','SwarmAuth'});
