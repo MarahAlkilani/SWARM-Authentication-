@@ -1,8 +1,3 @@
-% =========================================================================
-% MODULE 6: True Empirical SwarmAuth Evaluation (AES-GCM) & Graphics
-% Physically measures cryptographic throughput and generates network topologies.
-% =========================================================================
-
 clc; clear; close all;
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
@@ -13,40 +8,30 @@ fprintf('======================================================\n');
 fprintf(' SwarmAuth Phase 3: True Cryptographic Packet Evaluation \n');
 fprintf('======================================================\n\n');
 
-%% 1. Initialization & Pre-Shared Key (PSK) Setup
 num_trials = 1000;
-payload_size = 256; % Bytes
+payload_size = 256; 
 malicious_rate = 0.30; 
 
 legit_sent = 0;
 malicious_sent = 0;
-
-% SwarmAuth Outcomes
 sa_legit_accepted = 0;
-sa_attack_detected = 0;
 sa_total_latency = 0;
-
-% Baseline Outcomes
 base_legit_accepted = 0;
-base_false_positives = 0; % attacks accepted
+base_false_positives = 0; 
 base_total_latency = 0;
 
-% Specific Attack Counters for Console
 attack_detected_injection = 0;
 attack_detected_impersonation = 0;
 attack_detected_replay = 0;
 attack_detected_tampering = 0;
 
-% Provision real 256-bit PSK
 psk_bytes = randi([0 255], 1, 32, 'int8');
 secretKey = SecretKeySpec(psk_bytes, 'AES');
 registry_id = "WINGMAN_01";
 
 fprintf('[SYSTEM] Running %d empirical trials with AES-GCM...\n\n', num_trials);
 
-%% 2. The Empirical Execution Loop
 for i = 1:num_trials
-    % 0 = Legit, 1 = Inject, 2 = Impersonate, 3 = Replay, 4 = Tamper
     is_malicious = rand() < malicious_rate;
     if is_malicious
         attack_type = randi([1 4]);
@@ -56,9 +41,7 @@ for i = 1:num_trials
         legit_sent = legit_sent + 1;
     end
     
-    % --- BASELINE NETWORK EVALUATION ---
     tic;
-    % Baseline accepts everything
     pause(0.0001); 
     base_total_latency = base_total_latency + (toc * 1000);
     
@@ -68,34 +51,26 @@ for i = 1:num_trials
         base_legit_accepted = base_legit_accepted + 1;
     end
     
-    % --- SWARMAUTH NETWORK EVALUATION (AES-GCM) ---
     tic;
     try
         incoming_id = registry_id;
         incoming_key = psk_bytes;
         incoming_time = 0; 
         
-        if attack_type == 1 % Injection
-            incoming_id = "ENEMY_DRONE";
-        elseif attack_type == 2 % Impersonation
-            incoming_key = randi([0 255], 1, 32, 'int8'); 
-        elseif attack_type == 3 % Replay
-            incoming_time = 5; 
+        if attack_type == 1, incoming_id = "ENEMY_DRONE";
+        elseif attack_type == 2, incoming_key = randi([0 255], 1, 32, 'int8'); 
+        elseif attack_type == 3, incoming_time = 5; 
         end
         
-        % Check 1: Registry
         if ~strcmp(incoming_id, registry_id), error('REJECT_UNKNOWN_ID'); end
-        % Check 2: Freshness
         if incoming_time > 3, error('REJECT_REPLAY'); end
         
-        % Check 3: HMAC
         md = MessageDigest.getInstance('SHA-256');
         md.update(incoming_key);
         hmac_attacker = md.digest();
         md.reset(); md.update(psk_bytes); hmac_legit = md.digest();
         if ~isequal(hmac_attacker, hmac_legit), error('REJECT_INVALID_MAC'); end
         
-        % P2P Payload Phase
         payload = int8(randi([0 255], 1, payload_size));
         iv = randi([0 255], 1, 12, 'int8'); 
         
@@ -104,45 +79,32 @@ for i = 1:num_trials
         cipher.init(Cipher.ENCRYPT_MODE, secretKey, gcmSpec);
         ciphertext = cipher.doFinal(payload);
         
-        if attack_type == 4 
-            ciphertext(10) = ciphertext(10) + 1; % Tamper
-        end
+        if attack_type == 4, ciphertext(10) = ciphertext(10) + 1; end
         
         decCipher = Cipher.getInstance('AES/GCM/NoPadding');
         decCipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec);
         decCipher.doFinal(ciphertext); 
         
-        if attack_type == 0
-            sa_legit_accepted = sa_legit_accepted + 1;
-        end
+        if attack_type == 0, sa_legit_accepted = sa_legit_accepted + 1; end
         
     catch ME
-        sa_attack_detected = sa_attack_detected + 1;
-        if strcmp(ME.message, 'REJECT_UNKNOWN_ID')
-            attack_detected_injection = attack_detected_injection + 1;
-        elseif strcmp(ME.message, 'REJECT_REPLAY')
-            attack_detected_replay = attack_detected_replay + 1;
-        elseif strcmp(ME.message, 'REJECT_INVALID_MAC')
-            attack_detected_impersonation = attack_detected_impersonation + 1;
-        else
-            attack_detected_tampering = attack_detected_tampering + 1;
+        if strcmp(ME.message, 'REJECT_UNKNOWN_ID'), attack_detected_injection = attack_detected_injection + 1;
+        elseif strcmp(ME.message, 'REJECT_REPLAY'), attack_detected_replay = attack_detected_replay + 1;
+        elseif strcmp(ME.message, 'REJECT_INVALID_MAC'), attack_detected_impersonation = attack_detected_impersonation + 1;
+        else attack_detected_tampering = attack_detected_tampering + 1;
         end
     end
     sa_total_latency = sa_total_latency + (toc * 1000);
 end
 
-%% 3. Metric Calculations
 base_pdr = (base_legit_accepted / (base_legit_accepted + base_false_positives)) * 100;
 sa_pdr = (sa_legit_accepted / legit_sent) * 100;
-
 sa_avg_latency_ms = sa_total_latency / num_trials;
 base_avg_latency_ms = base_total_latency / num_trials;
-
-auth_header_size = 72; % Bytes
+auth_header_size = 72; 
 base_overhead_kb = (num_trials * payload_size) / 1024;
 sa_overhead_kb = (num_trials * (payload_size + auth_header_size)) / 1024;
 
-%% 4. Console Output
 fprintf('--- Empirical Results ---\n');
 fprintf('Legitimate Packets Processed : %d\n', sa_legit_accepted);
 fprintf('Injection Attacks Blocked    : %d\n', attack_detected_injection);
@@ -155,53 +117,33 @@ fprintf('SwarmAuth PDR                : %.2f %%\n', sa_pdr);
 fprintf('SwarmAuth Avg Latency        : %.4f ms\n', sa_avg_latency_ms);
 fprintf('======================================================\n\n');
 
-%% 5. Graphical Representations
 fprintf('[SYSTEM] Generating all Graphical Figures...\n');
 
-% Figure 1: Performance Bar Charts
 figure('Name', 'Empirical Evaluation Metrics', 'Position', [100, 100, 900, 400]);
-
 subplot(1, 3, 1);
 bar([base_pdr, sa_pdr], 'FaceColor', [0.4660 0.6740 0.1880]);
-set(gca, 'XTickLabel', {'Baseline', 'SwarmAuth'});
-ylabel('Effective PDR (%)'); title('Packet Delivery Ratio'); ylim([0 110]); grid on;
-
+set(gca, 'XTickLabel', {'Baseline', 'SwarmAuth'}); ylabel('Effective PDR (%)'); title('Packet Delivery Ratio'); ylim([0 110]); grid on;
 subplot(1, 3, 2);
 bar([base_avg_latency_ms, sa_avg_latency_ms], 'FaceColor', [0.8500 0.3250 0.0980]);
-set(gca, 'XTickLabel', {'Baseline', 'SwarmAuth'});
-ylabel('Latency (ms)'); title('Average Latency'); grid on;
-
+set(gca, 'XTickLabel', {'Baseline', 'SwarmAuth'}); ylabel('Latency (ms)'); title('Average Latency'); grid on;
 subplot(1, 3, 3);
 bar([base_overhead_kb, sa_overhead_kb], 'FaceColor', [0.0 0.4470 0.7410]);
-set(gca, 'XTickLabel', {'Baseline', 'SwarmAuth'});
-ylabel('Overhead (KB)'); title('Total Overhead'); grid on;
+set(gca, 'XTickLabel', {'Baseline', 'SwarmAuth'}); ylabel('Overhead (KB)'); title('Total Overhead'); grid on;
 
-% Define nodes for Topology Graphs
 nodeNames = {'Cluster_Head', 'W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8', 'W9'};
 
-% Figure 2: Modality A (Client-to-Server Authentication)
 figure('Name', 'Modality A: UAV-to-CH (Auth Phase)', 'Position', [150, 150, 500, 450]);
-s_CH = repmat(1, 1, 9); 
-t_W = 2:10;            
-s_auth = [s_CH, t_W]; 
-t_auth = [t_W, s_CH];
+s_CH = repmat(1, 1, 9); t_W = 2:10; s_auth = [s_CH, t_W]; t_auth = [t_W, s_CH];
 G_A = digraph(nodeNames(s_auth), nodeNames(t_auth));
-
 pA = plot(G_A, 'Layout', 'force', 'MarkerSize', 12, 'NodeColor', '#77AC30', 'EdgeColor', '#0072BD');
 highlight(pA, 'Cluster_Head', 'NodeColor', '#0072BD', 'MarkerSize', 18);
-title('Modality A: Centralized Authentication (UAV-to-CH)');
-subtitle('Bidirectional Handshake with Cluster Head');
+title('Modality A: Centralized Authentication (UAV-to-CH)'); subtitle('Bidirectional Handshake with Cluster Head');
 
-% Figure 3: Modality B (Peer-to-Peer Telemetry)
 figure('Name', 'Modality B: UAV-to-UAV (P2P Telemetry)', 'Position', [200, 200, 500, 450]);
-s_P2P = [2 3 4 5 6 7 8 9 10 2 5 8];
-t_P2P = [3 4 5 6 7 8 9 10 2 6 9 3]; 
-G_B = digraph(nodeNames(s_P2P), nodeNames(t_P2P));
-G_B = addnode(G_B, 'Cluster_Head'); 
-
+s_P2P = [2 3 4 5 6 7 8 9 10 2 5 8]; t_P2P = [3 4 5 6 7 8 9 10 2 6 9 3]; 
+G_B = digraph(nodeNames(s_P2P), nodeNames(t_P2P)); G_B = addnode(G_B, 'Cluster_Head'); 
 pB = plot(G_B, 'Layout', 'circle', 'MarkerSize', 12, 'NodeColor', '#77AC30', 'EdgeColor', '#D95319', 'LineWidth', 1.5);
 highlight(pB, 'Cluster_Head', 'NodeColor', '#808080', 'MarkerSize', 18); 
-title('Modality B: Encrypted Peer-to-Peer (UAV-to-UAV)');
-subtitle('Cluster Head bypassed during operational telemetry');
+title('Modality B: Encrypted Peer-to-Peer (UAV-to-UAV)'); subtitle('Cluster Head bypassed during operational telemetry');
 
 fprintf('[SYSTEM] Phase 3 Simulation Complete.\n\n');

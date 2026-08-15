@@ -1,17 +1,19 @@
-function hex_cipher = aes_encrypt(hex_key, plaintext)
-    % AES-256 Encryption using Java Cryptography Extension (Safe Byte Casting)
+function [ciphertext, iv] = aes_encrypt(plaintext_str, key_bytes)
+    import javax.crypto.Cipher;
+    import javax.crypto.spec.SecretKeySpec;
+    import javax.crypto.spec.GCMParameterSpec;
     
-    % Properly cast hex to uint8, then typecast to Java's signed int8
-    key_uint8 = uint8(hex2dec(reshape(hex_key, 2, [])'));
-    key_bytes = typecast(key_uint8, 'int8');
+    % Generate a fresh 96-bit (12-byte) IV for GCM
+    iv = randi([0 255], 1, 12, 'int8');
     
-    secretKey = javaObject('javax.crypto.spec.SecretKeySpec', key_bytes, 'AES');
-    cipher = javaMethod('getInstance', 'javax.crypto.Cipher', 'AES/ECB/PKCS5Padding');
-    cipher.init(1, secretKey); % 1 = ENCRYPT_MODE
+    % Initialize AES-GCM
+    secretKey = SecretKeySpec(int8(key_bytes), 'AES');
+    cipher = Cipher.getInstance('AES/GCM/NoPadding');
+    gcmSpec = GCMParameterSpec(128, iv);
     
-    % Safely cast plaintext characters to bytes
-    pt_bytes = typecast(uint8(char(plaintext)), 'int8');
-    enc_bytes = cipher.doFinal(pt_bytes);
+    cipher.init(Cipher.ENCRYPT_MODE, secretKey, gcmSpec);
     
-    hex_cipher = sprintf('%02x', typecast(enc_bytes, 'uint8'));
+    % Encrypt the payload
+    plaintext_bytes = int8(unicode2native(plaintext_str, 'UTF-8'));
+    ciphertext = cipher.doFinal(plaintext_bytes);
 end

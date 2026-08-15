@@ -1,18 +1,20 @@
-function plaintext = aes_decrypt(hex_key, hex_cipher)
-    % AES-256 Decryption using Java Cryptography Extension (Safe Byte Casting)
+function plaintext_str = aes_decrypt(ciphertext, key_bytes, iv)
+    import javax.crypto.Cipher;
+    import javax.crypto.spec.SecretKeySpec;
+    import javax.crypto.spec.GCMParameterSpec;
     
-    % Properly cast hex to uint8, then typecast to Java's signed int8
-    key_uint8 = uint8(hex2dec(reshape(hex_key, 2, [])'));
-    key_bytes = typecast(key_uint8, 'int8');
+    % Rebuild AES-GCM parameters
+    secretKey = SecretKeySpec(int8(key_bytes), 'AES');
+    cipher = Cipher.getInstance('AES/GCM/NoPadding');
+    gcmSpec = GCMParameterSpec(128, iv);
     
-    secretKey = javaObject('javax.crypto.spec.SecretKeySpec', key_bytes, 'AES');
-    cipher = javaMethod('getInstance', 'javax.crypto.Cipher', 'AES/ECB/PKCS5Padding');
-    cipher.init(2, secretKey); % 2 = DECRYPT_MODE
+    cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec);
     
-    % Safely cast ciphertext hex to bytes
-    cipher_uint8 = uint8(hex2dec(reshape(hex_cipher, 2, [])'));
-    cipher_bytes = typecast(cipher_uint8, 'int8');
-    
-    dec_bytes = cipher.doFinal(cipher_bytes);
-    plaintext = char(typecast(dec_bytes, 'uint8'))';
+    try
+        % Decrypt and simultaneously authenticate the GCM tag
+        plaintext_bytes = cipher.doFinal(ciphertext);
+        plaintext_str = native2unicode(typecast(plaintext_bytes, 'uint8'), 'UTF-8');
+    catch ME
+        error('AEADBadTagException: Ciphertext or IV was tampered with in transit!');
+    end
 end
