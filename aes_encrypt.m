@@ -1,39 +1,18 @@
-function ciphertext_with_iv = aes_encrypt(key_input, plaintext_str)
-    % =====================================================================
-    % SwarmAuth: AES-GCM Encryption Module
-    % Automatically parses 64-char Hex strings into 32-byte AES keys.
-    % =====================================================================
-    import javax.crypto.Cipher;
-    import javax.crypto.spec.SecretKeySpec;
-    import javax.crypto.spec.GCMParameterSpec;
-    
-    % Safely convert 64-character Hex string back into 32 raw bytes for Java
-    if (ischar(key_input) || isstring(key_input)) && length(char(key_input)) == 64
-        key_bytes = hex2dec(reshape(char(key_input), 2, [])').';
-    elseif length(key_input) == 64
-        key_bytes = hex2dec(reshape(char(key_input), 2, [])').';
-    else
-        key_bytes = key_input;
-    end
-    
-    % Cast to int8 for Java compatibility
-    key_bytes_int8 = typecast(uint8(key_bytes), 'int8');
-    
-    % Generate a fresh 96-bit (12-byte) IV for GCM
-    iv = randi([0 255], 1, 12, 'int8');
-    
-    % Initialize AES-GCM
-    secretKey = SecretKeySpec(key_bytes_int8, 'AES');
-    cipher = Cipher.getInstance('AES/GCM/NoPadding');
-    gcmSpec = GCMParameterSpec(128, iv);
-    
-    cipher.init(Cipher.ENCRYPT_MODE, secretKey, gcmSpec);
-    
-    % Encrypt the payload
-    plaintext_bytes = int8(unicode2native(char(plaintext_str), 'UTF-8'));
-    ciphertext = cipher.doFinal(plaintext_bytes);
-    
-    % Bundle IV and Ciphertext together into a single network packet
-    % FIX: Force both to be row vectors using (:)' to prevent horzcat errors
-    ciphertext_with_iv = [typecast(iv(:)', 'uint8'), typecast(ciphertext(:)', 'uint8')];
+function packet = aes_encrypt(hex_key, plaintext, aad)
+% AES-256-GCM encryption.  Returns a struct containing a fresh nonce,
+% ciphertext, and authentication tag.  `aad` is authenticated, not encrypted.
+    if nargin < 3, aad = ''; end
+    key_bytes = typecast(uint8(hex2dec(reshape(hex_key, 2, [])')), 'int8');
+    nonce_uint8 = secure_random_bytes(12); % NIST-recommended GCM nonce size
+    nonce_bytes = typecast(nonce_uint8, 'int8');
+    cipher = javaMethod('getInstance', 'javax.crypto.Cipher', 'AES/GCM/NoPadding');
+    key = javaObject('javax.crypto.spec.SecretKeySpec', key_bytes, 'AES');
+    spec = javaObject('javax.crypto.spec.GCMParameterSpec', 128, nonce_bytes);
+    cipher.init(1, key, spec);
+    cipher.updateAAD(typecast(uint8(char(aad)), 'int8'));
+    encrypted_with_tag = cipher.doFinal(typecast(uint8(char(plaintext)), 'int8'));
+    result = typecast(encrypted_with_tag, 'uint8');
+    packet = struct('nonce', sprintf('%02x', nonce_uint8), ...
+                    'ciphertext', sprintf('%02x', result(1:end-16)), ...
+                    'tag', sprintf('%02x', result(end-15:end)));
 end
