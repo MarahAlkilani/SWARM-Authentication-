@@ -19,7 +19,7 @@ function plaintext_str = aes_decrypt(key_input, ciphertext_with_iv)
     % Cast to int8 for Java compatibility
     key_bytes_int8 = typecast(uint8(key_bytes), 'int8');
     
-    % FIX: Use typecast instead of int8() to prevent MATLAB from capping values at 127!
+    % Use typecast instead of int8() to prevent MATLAB from capping values at 127
     iv = typecast(uint8(ciphertext_with_iv(1:12)), 'int8');
     ciphertext = typecast(uint8(ciphertext_with_iv(13:end)), 'int8');
     
@@ -33,7 +33,9 @@ function plaintext_str = aes_decrypt(key_input, ciphertext_with_iv)
     try
         % Decrypt and simultaneously authenticate the GCM tag
         plaintext_bytes = cipher.doFinal(ciphertext);
-        plaintext_str = native2unicode(typecast(plaintext_bytes, 'uint8'), 'UTF-8');
+        
+        % FIX: Force plaintext_bytes into a row vector using (:)' so strsplit doesn't crash!
+        plaintext_str = native2unicode(typecast(plaintext_bytes(:)', 'uint8'), 'UTF-8');
     catch ME
         error('AEADBadTagException: Ciphertext or IV was tampered with in transit!');
     end
