@@ -80,55 +80,57 @@ p = plot(G_p2p,'Layout','circle','MarkerSize',12,'NodeColor','#77AC30','EdgeColo
 highlight(p,'Cluster_Head','NodeColor','#808080','MarkerSize',19);
 title('Modality B: Authenticated UAV-to-UAV Telemetry','FontWeight','bold');
 subtitle('Cluster Head is bypassed during operational P2P traffic');
-
 % =====================================================================
 % SCENARIO: DOCTOR DATA EXTRACTION (Raw Hexadecimal Readouts)
 % =====================================================================
-fprintf('\n--- DR. ORAIB CRYPTOGRAPHIC DATA EXTRACTION ---\n');
+fprintf('\n--- DR. ORAIB CRYPTOGRAPHIC DATA EXTRACTION (ALL WINGMEN) ---\n');
 
-% FIX: Shuffle the random number generator using the current time 
-% so the keys are completely unique on every single run!
+% Shuffle the random number generator so the keys are unique on every run
 rng('shuffle');
 
-% 1. Extract and format a 256-bit Pre-Shared Key (PSK)
-demo_key = randi([0 255], 1, 32, 'int8');
-key_hex = sprintf('%02X', typecast(demo_key(:)', 'uint8'));
-fprintf('[KEY] Wingman 256-bit PSK (Hex) : %s\n', key_hex);
-
-% 2. Extract and format a 256-bit Nonce
-demo_nonce = randi([0 255], 1, 32, 'int8');
-nonce_hex = sprintf('%02X', typecast(demo_nonce(:)', 'uint8'));
-fprintf('[NONCE] Generated Challenge (Hex) : %s\n', nonce_hex);
-
-% 3. Extract and format the HMAC-SHA256 Signature
-import java.security.MessageDigest;
-md = MessageDigest.getInstance('SHA-256');
-md.update(demo_key);
-md.update(demo_nonce);
-hmac_raw = md.digest();
-hmac_hex = sprintf('%02X', typecast(hmac_raw(:)', 'uint8'));
-fprintf('[HMAC] SHA-256 Signature (Hex)    : %s\n', hmac_hex);
-
-% 4. Extract and format AES-GCM Ciphertext (ECA/AES) and IV
-plaintext_demo = 'Target locked at Sector 7G';
-
-% Inline Java AES-GCM to bypass any standalone function formatting issues
-import javax.crypto.Cipher;
-import javax.crypto.spec.SecretKeySpec;
-import javax.crypto.spec.GCMParameterSpec;
-
-iv_raw = randi([0 255], 1, 12, 'int8');
-secretKey = SecretKeySpec(demo_key, 'AES');
-cipher = Cipher.getInstance('AES/GCM/NoPadding');
-gcmSpec = GCMParameterSpec(128, iv_raw);
-cipher.init(Cipher.ENCRYPT_MODE, secretKey, gcmSpec);
-
-jString = java.lang.String(plaintext_demo);
-ct_raw = cipher.doFinal(jString.getBytes('UTF-8'));
-
-iv_hex = sprintf('%02X', typecast(iv_raw(:)', 'uint8'));
-ct_hex = sprintf('%02X', typecast(ct_raw(:)', 'uint8'));
-
-fprintf('[AES-GCM] 96-bit IV (Hex)         : %s\n', iv_hex);
-fprintf('[AES-GCM] Ciphertext (Hex)        : %s\n', ct_hex);
-fprintf('======================================================\n\n');
+% Loop through all 9 Wingmen
+for i = 1:9
+    fprintf('\n>>> [ WINGMAN_0%d ] <<<\n', i);
+    
+    % 1. Extract and format a 256-bit Pre-Shared Key (PSK)
+    demo_key = randi([0 255], 1, 32, 'int8');
+    key_hex = sprintf('%02X', typecast(demo_key(:)', 'uint8'));
+    fprintf('  [KEY] 256-bit PSK (Hex) : %s\n', key_hex);
+    
+    % 2. Extract and format a 256-bit Nonce
+    demo_nonce = randi([0 255], 1, 32, 'int8');
+    nonce_hex = sprintf('%02X', typecast(demo_nonce(:)', 'uint8'));
+    fprintf('  [NONCE] Challenge (Hex) : %s\n', nonce_hex);
+    
+    % 3. Extract and format the HMAC-SHA256 Signature
+    import java.security.MessageDigest;
+    md = MessageDigest.getInstance('SHA-256');
+    md.update(demo_key);
+    md.update(demo_nonce);
+    hmac_raw = md.digest();
+    hmac_hex = sprintf('%02X', typecast(hmac_raw(:)', 'uint8'));
+    fprintf('  [HMAC] SHA-256 (Hex)    : %s\n', hmac_hex);
+    
+    % 4. Extract and format AES-GCM Ciphertext (ECA/AES) and IV
+    plaintext_demo = sprintf('Target locked at Sector %dG', i);
+    
+    import javax.crypto.Cipher;
+    import javax.crypto.spec.SecretKeySpec;
+    import javax.crypto.spec.GCMParameterSpec;
+    
+    iv_raw = randi([0 255], 1, 12, 'int8');
+    secretKey = SecretKeySpec(demo_key, 'AES');
+    cipher = Cipher.getInstance('AES/GCM/NoPadding');
+    gcmSpec = GCMParameterSpec(128, iv_raw);
+    cipher.init(Cipher.ENCRYPT_MODE, secretKey, gcmSpec);
+    
+    jString = java.lang.String(plaintext_demo);
+    ct_raw = cipher.doFinal(jString.getBytes('UTF-8'));
+    
+    iv_hex = sprintf('%02X', typecast(iv_raw(:)', 'uint8'));
+    ct_hex = sprintf('%02X', typecast(ct_raw(:)', 'uint8'));
+    
+    fprintf('  [AES-GCM] 96-bit IV     : %s\n', iv_hex);
+    fprintf('  [AES-GCM] Ciphertext    : %s\n', ct_hex);
+end
+fprintf('\n======================================================\n\n');
