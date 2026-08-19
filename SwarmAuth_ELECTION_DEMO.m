@@ -1,4 +1,4 @@
-function SwarmAuth_LiveDemo
+function SwarmAuth_ELECTION_DEMO
 % SWARMAUTH_LIVEDEMO
 % Standalone, professor-ready live simulation of the SwarmAuth protocol.
 %
@@ -62,7 +62,10 @@ function SwarmAuth_LiveDemo
         'FontWeight','bold','FontSize',20);
 
     % Fixed positions: Leader in center + nine Wingmen around it.
-    leaderPos = [5 5];
+    originalLeaderPos = [5 5];
+    leaderPos = originalLeaderPos;
+    currentLeaderId = 10;          % NODE_10 is the initial Cluster Head
+    electionComplete = false;
     theta = (0:N-1)' * 2*pi/N + pi/2;
     radius = 3.25;
     wingPos = [5 + radius*cos(theta), 5 + radius*sin(theta)];
@@ -75,6 +78,7 @@ function SwarmAuth_LiveDemo
         ey(q:q+2) = [leaderPos(2); wingPos(k,2); NaN];
     end
     edgeH = plot(ax,ex,ey,'--','Color',[0.25 0.30 0.38],'LineWidth',1.2);
+    authEdgeH = gobjects(0);  % separate green links; cleared on reset
 
     % ONE scatter object for all nine Wingmen.
     idleColor = [0.38 0.42 0.48];
@@ -82,22 +86,28 @@ function SwarmAuth_LiveDemo
         'filled','MarkerEdgeColor',[0.92 0.94 0.98],'LineWidth',1.8);
 
     % Leader is a separate single object.
-    leaderH = scatter(ax,leaderPos(1),leaderPos(2),1250,[0.08 0.45 0.90], ...
+    leaderH = scatter(ax,leaderPos(1),leaderPos(2),1550,[0.08 0.45 0.90], ...
         'filled','MarkerEdgeColor',[0.9 0.95 1],'LineWidth',2.2);
 
     % Labels are all created once.
+    wingLabelH = gobjects(N,1);
     for k = 1:N
-        text(ax,wingPos(k,1),wingPos(k,2),sprintf('W%d',k), ...
+        wingLabelH(k) = text(ax,wingPos(k,1),wingPos(k,2),sprintf('W%d',k), ...
             'HorizontalAlignment','center','VerticalAlignment','middle', ...
             'Color','white','FontWeight','bold','FontSize',10);
     end
-    text(ax,leaderPos(1),leaderPos(2),'LEADER', ...
+    leaderLabelH = text(ax,leaderPos(1),leaderPos(2),'NODE_10', ...
         'HorizontalAlignment','center','VerticalAlignment','middle', ...
         'Color','white','FontWeight','bold','FontSize',9);
 
     uilabel(left,'Position',[30 80 920 28], ...
         'Text','BLUE = Leader    GREEN = Authenticated    GRAY = Idle    RED = Attack / Rejected', ...
         'FontColor',[0.82 0.87 0.94],'FontSize',12,'HorizontalAlignment','center');
+
+    authCounter = uilabel(left,'Position',[30 105 920 28], ...
+        'Text','AUTHENTICATED: 0 / 9', ...
+        'FontColor',[0.72 0.78 0.88],'FontSize',13,'FontWeight','bold', ...
+        'HorizontalAlignment','center');
 
     statusLabel = uilabel(left,'Position',[30 40 920 30], ...
         'Text','READY — press a button to demonstrate the protocol.', ...
@@ -110,45 +120,55 @@ function SwarmAuth_LiveDemo
         'ForegroundColor',[0.2 0.9 1], ...
         'BackgroundColor',[0.06 0.08 0.13]);
 
-    uilabel(right,'Position',[25 775 520 28],'Text','1. AUTHENTICATION', ...
+    uilabel(right,'Position',[25 775 520 28],'Text','0. LEADER ELECTION', ...
+        'FontColor',[0.98 0.70 0.20],'FontWeight','bold','FontSize',15);
+
+    uibutton(right,'push','Text','RUN LOWEST-ID ELECTION', ...
+        'Position',[25 730 250 40], ...
+        'BackgroundColor',[0.45 0.30 0.70], ...
+        'FontWeight','bold','ButtonPushedFcn',@(~,~)runElection());
+    uibutton(right,'push','Text','Reset to NODE_10 Leader', ...
+        'Position',[285 730 250 40],'ButtonPushedFcn',@(~,~)resetDemo());
+
+    uilabel(right,'Position',[25 685 520 28],'Text','1. AUTHENTICATION', ...
         'FontColor',[0.2 0.9 1],'FontWeight','bold','FontSize',15);
 
     uibutton(right,'push','Text','Authenticate WINGMAN_03', ...
-        'Position',[25 730 250 40],'ButtonPushedFcn',@(~,~)authOne(3));
-    uibutton(right,'push','Text','Authenticate ALL 9 DRONES', ...
-        'Position',[285 730 250 40],'ButtonPushedFcn',@(~,~)authAll());
+        'Position',[25 640 250 40],'ButtonPushedFcn',@(~,~)authOne(3));
+    uibutton(right,'push','Text','Authenticate ALL WINGMEN', ...
+        'Position',[285 640 250 40],'ButtonPushedFcn',@(~,~)authAll());
 
-    uilabel(right,'Position',[25 685 520 28],'Text','2. LIVE ATTACKS', ...
+    uilabel(right,'Position',[25 595 520 28],'Text','2. LIVE ATTACKS', ...
         'FontColor',[0.98 0.70 0.20],'FontWeight','bold','FontSize',15);
 
     uibutton(right,'push','Text','Impersonation / Forged HMAC', ...
-        'Position',[25 640 250 40],'ButtonPushedFcn',@(~,~)impersonation());
+        'Position',[25 550 250 40],'ButtonPushedFcn',@(~,~)impersonation());
     uibutton(right,'push','Text','Replay Attack', ...
-        'Position',[285 640 250 40],'ButtonPushedFcn',@(~,~)replay());
+        'Position',[285 550 250 40],'ButtonPushedFcn',@(~,~)replay());
     uibutton(right,'push','Text','Unauthorized Node Injection', ...
-        'Position',[25 590 250 40],'ButtonPushedFcn',@(~,~)unknownNode());
+        'Position',[25 500 250 40],'ButtonPushedFcn',@(~,~)unknownNode());
     uibutton(right,'push','Text','MITM / Bit-Flip Tampering', ...
-        'Position',[285 590 250 40],'ButtonPushedFcn',@(~,~)tamper());
+        'Position',[285 500 250 40],'ButtonPushedFcn',@(~,~)tamper());
 
-    uilabel(right,'Position',[25 545 520 28],'Text','3. SECURE COMMUNICATION', ...
+    uilabel(right,'Position',[25 455 520 28],'Text','3. SECURE COMMUNICATION', ...
         'FontColor',[0.30 0.95 0.55],'FontWeight','bold','FontSize',15);
 
     uibutton(right,'push','Text','Send AES-GCM Telemetry', ...
-        'Position',[25 500 250 40],'ButtonPushedFcn',@(~,~)telemetry());
+        'Position',[25 410 250 40],'ButtonPushedFcn',@(~,~)telemetry());
     uibutton(right,'push','Text','RUN FULL LIVE DEMO', ...
-        'Position',[285 500 250 40], ...
+        'Position',[285 410 250 40], ...
         'BackgroundColor',[0.10 0.55 0.80], ...
         'FontWeight','bold','ButtonPushedFcn',@(~,~)fullDemo());
 
-    uilabel(right,'Position',[25 455 520 28],'Text','PROTOCOL / SECURITY LOG', ...
+    uilabel(right,'Position',[25 365 520 28],'Text','PROTOCOL / SECURITY LOG', ...
         'FontColor',[0.75 0.82 0.92],'FontWeight','bold','FontSize',15);
 
-    logBox = uitextarea(right,'Position',[25 65 510 380], ...
+    logBox = uitextarea(right,'Position',[25 65 510 285], ...
         'Editable','off','FontName','Consolas','FontSize',11, ...
         'BackgroundColor',[0.02 0.025 0.045], ...
         'FontColor',[0.88 0.93 0.98], ...
         'Value',{'SwarmAuth live simulation started.'; ...
-                 '10 nodes: 1 Leader + 9 Wingmen.'; ...
+                 '10 nodes: NODE_10 + 9 Wingmen.'; ...
                  'All nodes are visible and idle.'; ...
                  'Choose a demonstration.'});
 
@@ -157,7 +177,95 @@ function SwarmAuth_LiveDemo
 
     % -------------------- Initial render --------------------
     setStatus('READY — 10-node swarm initialized.');
+    updateAuthCounter();
     drawnow;
+
+    % =========================================================
+    % LEADER ELECTION — Lowest-ID Algorithm
+    % =========================================================
+    function runElection()
+        % Project-defined fault-tolerance sequence:
+        % NODE_10 fails -> timeout -> lowest surviving ID becomes leader.
+        if electionComplete
+            addLog('[ELECTION] NODE_01 is already the current Cluster Head.');
+            setStatus('NODE_01 IS CURRENT CLUSTER HEAD ✓');
+            return;
+        end
+
+        addLog('');
+        addLog('==============================================');
+        addLog('       SWARMAUTH LEADER ELECTION');
+        addLog('==============================================');
+        addLog('[SYSTEM] Swarm active. Current Cluster Head: NODE_10');
+        setStatus('NODE_10 = CURRENT CLUSTER HEAD');
+        step();
+
+        % Failure / kinetic capture.
+        addLog('[ALERT] NODE_10 has been compromised or lost power!');
+        setStatus('NODE_10 OFFLINE — LEADER FAILURE DETECTED');
+        leaderH.CData = [0.92 0.16 0.18];
+        leaderLabelH.String = 'NODE_10\nOFFLINE';
+        drawnow;
+        step();
+
+        % Detection / timeout.
+        addLog('[NETWORK] Wingmen pinging Cluster Head...');
+        setStatus('PINGING NODE_10 — WAITING FOR RESPONSE');
+        for k = 1:3
+            setNode(k,'yellow');
+            step();
+        end
+        addLog('[NETWORK] Timeout reached. Cluster Head is offline.');
+        setStatus('TIMEOUT — INITIATING LEADER ELECTION');
+        step();
+
+        % Election phase.
+        addLog('');
+        addLog('[ELECTION] Initiating Lowest-ID Election Algorithm...');
+        setStatus('ELECTION IN PROGRESS — COMPARING SURVIVING IDs');
+        % NODE_10 has failed, so only WINGMAN_01...WINGMAN_09 remain.
+        active_nodes = 1:N;
+        newLeader = min(active_nodes);
+
+        % Visually show the candidates being considered.
+        for k = 1:N
+            if k ~= newLeader
+                setNode(k,'yellow');
+            end
+            addLog(sprintf('[ELECTION] NODE_%02d participates.',k));
+            step();
+        end
+
+        addLog(sprintf('[ELECTION] Lowest surviving ID = NODE_%02d',newLeader));
+        addLog(sprintf('[ELECTION] NODE_%02d has the lowest ID and promotes itself.',newLeader));
+        setNode(newLeader,'idle');
+        setStatus(sprintf('NODE_%02d SELECTED — LOWEST-ID WINNER',newLeader));
+        step();
+
+        % Reorganize the graphical topology around the new leader.
+        currentLeaderId = newLeader;
+        leaderPos = wingPos(newLeader,:);
+        electionComplete = true;
+
+        % The elected wingman becomes the leader: hide its old wingman label
+        % and place the blue leader marker exactly on its physical position.
+        wingLabelH(newLeader).Visible = 'off';
+        leaderH.XData = leaderPos(1);
+        leaderH.YData = leaderPos(2);
+        leaderH.CData = [0.08 0.45 0.90];
+        leaderLabelH.Position = [leaderPos 0];
+        leaderLabelH.String = sprintf('NODE_%02d\nLEADER',newLeader);
+
+        rebuildEdges();
+
+        addLog(sprintf('[NETWORK] NODE_%02d broadcasting signed "Leader Assumption" packet...',newLeader));
+        setStatus(sprintf('NODE_%02d BROADCASTING LEADER ASSUMPTION',newLeader));
+        step();
+        addLog(sprintf('[SUCCESS] Swarm successfully reorganized around New Cluster Head: NODE_%02d',newLeader));
+        addLog('==============================================');
+        setStatus(sprintf('NEW CLUSTER HEAD: NODE_%02d ✓',newLeader));
+        drawnow;
+    end
 
     % =========================================================
     % AUTHENTICATION
@@ -172,7 +280,7 @@ function SwarmAuth_LiveDemo
         id = ids{i};
         addLog('');
         addLog(sprintf('=== AUTHENTICATING %s ===',id));
-        setStatus(sprintf('%s → Leader : JOIN',id));
+        setStatus(sprintf('%s → NODE_%02d : JOIN',id,currentLeaderId));
         step();
 
         nonceW = randomBytes(32);
@@ -186,7 +294,7 @@ function SwarmAuth_LiveDemo
         transcriptL = makeTranscript('CHALLENGE',id,nonceW,nonceL,ts);
         hmacL = hmacSha256(keys{i},transcriptL);
 
-        addLog('[2] Leader → Drone : CHALLENGE');
+        addLog(sprintf('[2] NODE_%02d → Drone : CHALLENGE',currentLeaderId));
         addLog(sprintf('    Nonce_L    %s...',hex(nonceL,16)));
         addLog(sprintf('    Timestamp  %d',ts));
         addLog(sprintf('    HMAC-L     %s...',hex(hmacL,16)));
@@ -220,7 +328,7 @@ function SwarmAuth_LiveDemo
         sessionKeys{i} = groupKey;
         authenticated(i) = true;
         setNode(i,'green');
-        addLog('[4] Leader verifies Drone HMAC : ACCEPT ✓');
+        addLog(sprintf('[4] NODE_%02d verifies Drone HMAC : ACCEPT ✓',currentLeaderId));
         addLog('[5] Session key established ✓');
         addLog('[6] SECURE_SESSION active ✓');
         setStatus(sprintf('%s AUTHENTICATED ✓',id));
@@ -232,12 +340,26 @@ function SwarmAuth_LiveDemo
         addLog('############################################');
         addLog('        FULL 9-NODE AUTHENTICATION');
         addLog('############################################');
-        for i=1:N
+        authList = 1:N;
+        if electionComplete && currentLeaderId >= 1 && currentLeaderId <= N
+            % The elected wingman is now the Cluster Head, so it should
+            % not authenticate itself as a wingman.
+            authList(authList == currentLeaderId) = [];
+        end
+
+        for i=authList
             authOne(i);
             step();
         end
-        addLog(sprintf('=== RESULT: %d/9 authenticated ===',sum(authenticated)));
-        setStatus(sprintf('%d/9 WINGMEN in SECURE_SESSION',sum(authenticated)));
+
+        expectedCount = numel(authList);
+        addLog(sprintf('=== RESULT: %d/%d Wingmen authenticated ===', ...
+            sum(authenticated),expectedCount));
+        if sum(authenticated) == expectedCount
+            addLog('[SECURITY] COMPLETE TRUSTED SWARM ESTABLISHED ✓');
+        end
+        setStatus(sprintf('%d/%d WINGMEN in SECURE_SESSION', ...
+            sum(authenticated),expectedCount));
     end
 
     % =========================================================
@@ -343,19 +465,21 @@ function SwarmAuth_LiveDemo
         aad = uint8('SwarmAuth-v1|W1|W2');
         nonce = randomBytes(12);
 
-        [ciphertext,tag] = aesGcmEncrypt(sessionKeys{sender},nonce,message,aad);
+        [ciphertext,tag,sealedB64] = aesGcmEncrypt(groupKey,nonce,message,aad);
 
-        addLog('[1] WINGMAN_01 → WINGMAN_02');
+        addLog(sprintf('[1] NODE_%02d → WINGMAN_02',currentLeaderId));
         addLog('[2] AES-GCM encryption + AAD applied ✓');
         addLog(sprintf('    IV/Nonce   : %s...',hex(nonce,24)));
         addLog(sprintf('    Ciphertext : %s...',hex(ciphertext,32)));
         addLog(sprintf('    Tag        : %s...',hex(tag,24)));
+        addLog('    Packet kept as exact Java sealed byte[] ✓');
         step();
 
-        recovered = aesGcmDecrypt(sessionKeys{receiver},nonce,ciphertext,tag,aad);
+        % Decrypt the exact byte sequence returned by Java encryption.
+        recovered = aesGcmDecrypt(groupKey,nonce,sealedB64,aad);
         addLog(sprintf('[3] Receiver decrypts → "%s" ✓',char(recovered)));
-        lastPacket = struct('key',sessionKeys{sender},'nonce',nonce, ...
-            'ciphertext',ciphertext,'tag',tag,'aad',aad);
+        lastPacket = struct('key',groupKey,'nonce',nonce, ...
+            'ciphertext',ciphertext,'tag',tag,'aad',aad,'sealedB64',sealedB64);
         setStatus('AES-GCM TELEMETRY DECRYPTED ✓');
     end
 
@@ -391,6 +515,8 @@ function SwarmAuth_LiveDemo
         addLog('################################################');
         addLog('             SWARMAUTH FULL LIVE DEMO');
         addLog('################################################');
+        runElection();
+        step();
         authAll();
         step();
         unknownNode();
@@ -416,15 +542,39 @@ function SwarmAuth_LiveDemo
             usedChallenges{k} = [];
             sessionKeys{k} = [];
         end
-        groupKey = randomBytes(32);
+        groupKey = randomBytes(16);
         lastPacket = struct();
-        setNodeColors(repmat(idleColor,N,1));
-        edgeH.Color = [0.25 0.30 0.38];
+
+        % Restore the original Cluster Head and topology.
+        currentLeaderId = 10;
+        electionComplete = false;
+        leaderPos = originalLeaderPos;
+        leaderH.XData = leaderPos(1);
+        leaderH.YData = leaderPos(2);
         leaderH.CData = [0.08 0.45 0.90];
+        leaderLabelH.Position = [leaderPos 0];
+        leaderLabelH.String = 'NODE_10';
+
+        % Restore every Wingman label in case an elected leader hid one.
+        for k = 1:N
+            wingLabelH(k).Visible = 'on';
+            wingLabelH(k).String = sprintf('W%d',k);
+        end
+
+        % Remove every old authenticated (green) link before rebuilding.
+        clearAuthEdges();
+
+        % Reset Wingmen and rebuild the original star.
+        setNodeColors(repmat(idleColor,N,1));
+        authCounter.Text = 'AUTHENTICATED: 0 / 9';
+        authCounter.FontColor = [0.72 0.78 0.88];
+        rebuildEdges();
+
         logBox.Value = {'[RESET] New 10-node swarm created.'; ...
-                        '[RESET] New PSKs generated.'; ...
-                        '[READY] Leader + 9 Wingmen visible.'};
-        setStatus('READY — fresh 10-node swarm initialized.');
+                        '[RESET] NODE_10 = original Cluster Head.'; ...
+                        '[READY] Leader + 9 Wingmen visible.'; ...
+                        '[READY] Run Lowest-ID Election to demonstrate failover.'};
+        setStatus('READY — NODE_10 is the original Cluster Head.');
         drawnow;
     end
 
@@ -440,24 +590,98 @@ function SwarmAuth_LiveDemo
             otherwise,    colors(i,:) = idleColor;
         end
         nodeH.CData = colors;
+        updateAuthCounter();
         drawnow;
     end
 
     function setNodeColors(colors)
         nodeH.CData = colors;
+        updateAuthCounter();
+        drawnow;
+    end
+
+    function updateAuthCounter()
+        if isvalid(authCounter)
+            if electionComplete
+                total = 8;
+            else
+                total = 9;
+            end
+            authCounter.Text = sprintf('AUTHENTICATED: %d / %d',sum(authenticated),total);
+            if sum(authenticated) == 9
+                authCounter.FontColor = [0.30 0.95 0.55];
+            else
+                authCounter.FontColor = [0.72 0.78 0.88];
+            end
+        end
+    end
+
+    function clearAuthEdges()
+        % Delete all separately drawn green authenticated links.
+        if ~isempty(authEdgeH)
+            for h = reshape(authEdgeH,1,[])
+                try
+                    if isgraphics(h)
+                        delete(h);
+                    end
+                catch
+                end
+            end
+        end
+        authEdgeH = gobjects(0);
+        drawnow;
+    end
+
+    function rebuildEdges()
+        % Rebuild ONLY the base gray dashed star from the current Cluster Head.
+        % First remove old green links so stale topology can never remain.
+        clearAuthEdges();
+
+        ex = zeros(3*N,1); ey = zeros(3*N,1);
+        for k = 1:N
+            q = 3*k-2;
+            ex(q:q+2) = [leaderPos(1); wingPos(k,1); NaN];
+            ey(q:q+2) = [leaderPos(2); wingPos(k,2); NaN];
+        end
+        edgeH.XData = ex;
+        edgeH.YData = ey;
+
+        % Re-apply only currently authenticated links.
+        for k = 1:N
+            if authenticated(k) && k ~= currentLeaderId
+                h = plot(ax,[leaderPos(1) wingPos(k,1)], ...
+                    [leaderPos(2) wingPos(k,2)], ...
+                    '-','Color',[0.15 0.78 0.38],'LineWidth',2.3);
+                authEdgeH(end+1) = h;
+            end
+        end
+
+        % Keep the leader marker and label above all links/nodes.
+        try
+            uistack(leaderH,'top');
+            uistack(leaderLabelH,'top');
+        catch
+        end
         drawnow;
     end
 
     function edgeGreen(i)
-        % Keep the complete star visible; authenticated links become green.
-        % Since edgeH is one object, update the corresponding 3-point segment.
-        x = edgeH.XData; y = edgeH.YData;
-        q = 3*i-2;
-        % MATLAB line object cannot store per-segment color, so we redraw
-        % the authenticated edge as a separate lightweight line.
-        plot(ax,[leaderPos(1) wingPos(i,1)],[leaderPos(2) wingPos(i,2)], ...
+        % Add one authenticated green link without creating stale graphics.
+        if i == currentLeaderId
+            return; % leader never authenticates to itself
+        end
+
+        h = plot(ax,[leaderPos(1) wingPos(i,1)], ...
+            [leaderPos(2) wingPos(i,2)], ...
             '-','Color',[0.15 0.78 0.38],'LineWidth',2.3);
-        edgeH.XData = x; edgeH.YData = y;
+        authEdgeH(end+1) = h;
+
+        try
+            uistack(leaderH,'top');
+            uistack(leaderLabelH,'top');
+        catch
+        end
+        drawnow;
     end
 
     function setStatus(s)
@@ -501,25 +725,38 @@ function SwarmAuth_LiveDemo
             kind,id,hex(nonceW),hex(nonceL),ts));
     end
 
-    function [ciphertext,tag] = aesGcmEncrypt(key,nonce,plain,aad)
+    function [ciphertext,tag,sealedB64] = aesGcmEncrypt(key,nonce,plain,aad)
         cipher = javax.crypto.Cipher.getInstance('AES/GCM/NoPadding');
-        spec = javax.crypto.spec.SecretKeySpec(int8(key),'AES');
-        gcm = javax.crypto.spec.GCMParameterSpec(128,int8(nonce));
+        spec = javax.crypto.spec.SecretKeySpec(int8(uint8(key(:)')),'AES');
+        gcm = javax.crypto.spec.GCMParameterSpec(128,int8(uint8(nonce(:)')));
         cipher.init(javax.crypto.Cipher.ENCRYPT_MODE,spec,gcm);
-        cipher.updateAAD(int8(aad));
-        all = typecast(cipher.doFinal(int8(plain)),'uint8')';
-        ciphertext = all(1:end-16);
-        tag = all(end-15:end);
+        cipher.updateAAD(int8(uint8(aad(:)')));
+
+        % Java returns ciphertext || 16-byte GCM tag.
+        javaSealed = cipher.doFinal(int8(uint8(plain(:)')));
+
+        % Base64 is only a transport/display representation. The exact
+        % Java byte sequence is preserved for the receiver.
+        encoder = java.util.Base64.getEncoder();
+        sealedB64 = char(encoder.encodeToString(javaSealed));
+
+        all = typecast(javaSealed,'uint8')';
+        ciphertext = uint8(all(1:end-16));
+        tag = uint8(all(end-15:end));
     end
 
-    function plain = aesGcmDecrypt(key,nonce,ciphertext,tag,aad)
+    function plain = aesGcmDecrypt(key,nonce,sealedB64,aad)
         cipher = javax.crypto.Cipher.getInstance('AES/GCM/NoPadding');
-        spec = javax.crypto.spec.SecretKeySpec(int8(key),'AES');
-        gcm = javax.crypto.spec.GCMParameterSpec(128,int8(nonce));
+        spec = javax.crypto.spec.SecretKeySpec(int8(uint8(key(:)')),'AES');
+        gcm = javax.crypto.spec.GCMParameterSpec(128,int8(uint8(nonce(:)')));
         cipher.init(javax.crypto.Cipher.DECRYPT_MODE,spec,gcm);
-        cipher.updateAAD(int8(aad));
-        all = [ciphertext tag];
-        plain = typecast(cipher.doFinal(int8(all)),'uint8')';
+        cipher.updateAAD(int8(uint8(aad(:)')));
+
+        decoder = java.util.Base64.getDecoder();
+        javaSealed = decoder.decode(sealedB64);
+
+        result = cipher.doFinal(javaSealed);
+        plain = typecast(result,'uint8')';
     end
 
     function s = hex(bytes,nchars)
