@@ -83,7 +83,7 @@ subtitle('Cluster Head is bypassed during operational P2P traffic');
 % =====================================================================
 % SCENARIO: DOCTOR DATA EXTRACTION (Raw Hexadecimal Readouts)
 % =====================================================================
-fprintf('\n--- DR. ORAIB CRYPTOGRAPHIC DATA EXTRACTION (ALL WINGMEN) ---\n');
+%fprintf('\n--- DR. ORAIB CRYPTOGRAPHIC DATA EXTRACTION (ALL WINGMEN) ---\n');
 
 % Shuffle the random number generator so the keys are unique on every run
 rng('shuffle');
